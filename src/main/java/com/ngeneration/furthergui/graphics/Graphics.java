@@ -19,7 +19,7 @@ public class Graphics {
 	private static final int FLOATS_BY_TEXTURE = 4 * 2 + 4 * 2 + 4 * 1;// vertices, uv, color
 
 	private Color color = Color.WHITE;
-	private Image pixel = new Image("C:\\Users\\LuisRodriguez\\xeclipse\\furthergui\\src\\main\\resources\\pixel.png");
+	private Image pixel = new Image("..\\furthergui\\src\\main\\resources\\pixel.png");
 
 	private float[] vertices;
 	private int verticesIndex = 0;
@@ -236,7 +236,7 @@ public class Graphics {
 	}
 
 	public void drawTexture(Texture image, float x, float y, int sx, int sy, int sw, int sh, int width, int height) {
-		drawTexture(image, x, y, sx, sy, sw, sh, 0, 0, (float)width / sw, (float)height / sh, 0);
+		drawTexture(image, x, y, sx, sy, sw, sh, 0, 0, (float) width / sw, (float) height / sh, 0);
 	}
 
 	public void drawTexture(Texture image, float x, float y, int sx, int sy, int sw, int sh, float originx,
