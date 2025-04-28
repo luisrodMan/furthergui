@@ -38,7 +38,7 @@ public class DefaultMutableTreeNode implements TreeNode {
 	}
 
 	public void add(TreeNode underLayingNode) {
-		children.add(underLayingNode);
+		add(getChildCount(), underLayingNode);
 	}
 
 	@Override

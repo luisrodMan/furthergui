@@ -48,30 +48,35 @@ import static org.lwjgl.system.MemoryUtil.NULL;
 
 import java.nio.IntBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-import javax.swing.JFrame;
-import javax.swing.JPopupMenu;
-
 import org.lwjgl.Version;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWCharCallbackI;
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.glfw.GLFWKeyCallbackI;
+import org.lwjgl.glfw.GLFWScrollCallback;
 import org.lwjgl.glfw.GLFWVidMode;
+import org.lwjgl.glfw.GLFWWindowSizeCallbackI;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryStack;
 
+import com.ngeneration.furthergui.drag.DragInterface;
+import com.ngeneration.furthergui.drag.DropEvent;
 import com.ngeneration.furthergui.event.Action;
 import com.ngeneration.furthergui.event.ActionEvent;
 import com.ngeneration.furthergui.event.FocusEvent;
 import com.ngeneration.furthergui.event.KeyEvent;
 import com.ngeneration.furthergui.event.KeyStroke;
 import com.ngeneration.furthergui.event.MouseEvent;
+import com.ngeneration.furthergui.event.MouseWheelEvent;
+import com.ngeneration.furthergui.event.PropertyEvent;
+import com.ngeneration.furthergui.event.PropertyListener;
 import com.ngeneration.furthergui.graphics.FFont;
 import com.ngeneration.furthergui.graphics.Graphics;
 import com.ngeneration.furthergui.math.Dimension;
@@ -84,9 +89,13 @@ import lombok.Data;
 public class FurtherApp {
 
 	private static FurtherApp instance;
-
 	private static Map<FWindow, Map<FComponent, Map<KeyStroke, String>>> inputMap = new HashMap<>();
 	private static List<Integer> pressedKeys = new ArrayList<>();
+	private static List<PropertyListener> propertyListeners = new ArrayList<>();
+
+	public static FurtherApp getInstance() {
+		return instance;
+	}
 
 	public static Map<FComponent, Map<KeyStroke, String>> getInputMap(FWindow window) {
 		return inputMap.computeIfAbsent(window, w -> new HashMap<>());
@@ -96,29 +105,36 @@ public class FurtherApp {
 		return new ArrayList<>(pressedKeys);
 	}
 
+	public interface FocusListener {
+		void focusChanged(FComponent lost, FComponent gain);
+	}
+
 	// The window handle
 	private long window;
-
 	private int width = 500;
 	private int height = 500;
-
 	private Graphics graphics;
+	private FFont defaultFont;
 
 	private List<FWindow> windows = new ArrayList<>();
+	private List<Runnable> toInvokeList = Collections.synchronizedList(new LinkedList<>());
+	private Map<Integer, Long> createdCursors = new HashMap<>();
+	private List<FocusListener> focusListeners = new LinkedList<>();
 	private FComponent focusedComponent;
-
-	private FFont defaultFont;
+	private FComponent dragComponent;
 
 	private int metaModifiers;
 	private Point mouseLocation = new Point();
 	private Point pressedLocation = new Point();
 	private int clickCount = 0;
-
 	private long lastTimeClick;
-
-	private List<Runnable> toInvokeList = new LinkedList<>();
-
 	private boolean mousePressed;
+
+	private Cursor lastCursor = null;
+	private boolean runningLoop;
+	private DropEvent dragEvent;
+	private DropEvent dropEvent;
+	private Thread mainThread;
 
 	public FurtherApp() {
 		instance = this;
@@ -129,6 +145,10 @@ public class FurtherApp {
 			defaultFont = new FFont(new java.awt.Font("xxx", java.awt.Font.PLAIN, 15));
 		}
 		return defaultFont;
+	}
+
+	public Dimension getDimension() {
+		return new Dimension(width, height);
 	}
 
 	public void run(Consumer<Void> consumer) {
@@ -144,15 +164,14 @@ public class FurtherApp {
 		// bindings available for use.
 		GL.createCapabilities();
 
-		graphics = new Graphics(width, height, 10);
-		glViewport(0, 0, width, height);
+		onResize();
 
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glEnable(GL_BLEND);
 		glEnable(GL_SCISSOR_TEST);
 
 		consumer.accept(null);
-		loop();
+		mainLoop();
 
 		// Free the window callbacks and destroy the window
 		glfwFreeCallbacks(window);
@@ -161,6 +180,11 @@ public class FurtherApp {
 		// Terminate GLFW and free the error callback
 		glfwTerminate();
 		glfwSetErrorCallback(null).free();
+	}
+
+	private void onResize() {
+		graphics = new Graphics(width, height, 10);
+		glViewport(0, 0, width, height);
 	}
 
 	private void init() {
@@ -185,13 +209,6 @@ public class FurtherApp {
 		window = glfwCreateWindow(width, height, "Hello World!", NULL, NULL);
 		if (window == NULL)
 			throw new RuntimeException("Failed to create the GLFW window");
-
-		// Setup a key callback. It will be called every time a key is pressed, repeated
-		// or released.
-		glfwSetKeyCallback(window, (window, key, scancode, action, mods) -> {
-			if (key == GLFW_KEY_ESCAPE && action == GLFW_RELEASE)
-				glfwSetWindowShouldClose(window, true); // We will detect this in the rendering loop
-		});
 
 		// Get the thread stack and push a new frame
 		try (MemoryStack stack = stackPush()) {
@@ -232,15 +249,26 @@ public class FurtherApp {
 			@Override
 			public void invoke(long window, int key, int scancode, int action, int mods) {
 				metaModifiers = mods;
-				if (action == KeyEvent.KEY_PRESSED)
+				if (action == KeyEvent.KEY_PRESSED) {
+					if (key == KeyEvent.VK_ESCAPE && dragEvent != null) {
+						mousePressed = false;
+						cancelDrag();
+						return;
+					}
 					pressedKeys.add(key);
-				else if (action == KeyEvent.KEY_RELEASED)
+				} else if (action == KeyEvent.KEY_RELEASED)
 					pressedKeys.remove((Object) key);
+				var event = new KeyEvent(focusedComponent, key, action, mods);
 				if (focusedComponent != null) {
-					var event = new KeyEvent(focusedComponent, key, action, mods);
 					focusedComponent.processKeyEvent(event);
-//				System.out.println("°key: " + scancode + " " + key);
 				}
+				if (event.isConsumed())
+					return;
+				FurtherApp.handleKeyStroke(// should be always focused! fix
+						focusedComponent == null ? windows.get(windows.size() - 1) : focusedComponent, event,
+						focusedComponent == null ? null : focusedComponent.inputMap,
+						focusedComponent == null ? null : focusedComponent.actionMap);
+//					System.out.println("°key: " + scancode + " " + key);
 			}
 		});
 		GLFW.glfwSetCharCallback(window, new GLFWCharCallbackI() {
@@ -250,15 +278,78 @@ public class FurtherApp {
 					focusedComponent.processKeyEvent(new KeyEvent(focusedComponent, codepoint, KeyEvent.KEY_TYPED, 0));
 			}
 		});
+		GLFW.glfwSetScrollCallback(window, new GLFWScrollCallback() {
+			@Override
+			public void invoke(long window1xx, double xoffset, double yoffset) {
+				var windows = new ArrayList<>(FurtherApp.this.windows);
+				fireEvent(mouseLocation, windows.stream().map(FComponent.class::cast).toList().reversed(),
+						(int) yoffset);
+			}
+
+			private boolean fireEvent(Point mouseLocation, List<FComponent> components, int yoffset) {
+				for (var component : components) {
+					if (component.isVisible() && component.contains(mouseLocation)) {
+						if (component.components == null
+								|| !fireEvent(new Point(mouseLocation).sub(component.getLocation()),
+										new ArrayList<>(component.components).reversed(), yoffset)) {
+							var event = new MouseWheelEvent(component, metaModifiers, (int) yoffset);
+							component.processScrollEvent(event);
+							return event.isConsumed();
+						}
+					}
+				}
+				return false;
+			}
+		});
+		GLFW.glfwSetWindowSizeCallback(window, new GLFWWindowSizeCallbackI() {
+			@Override
+			public void invoke(long window, int width, int height) {
+				PropertyEvent event = new PropertyEvent(null, FComponent.DIMENSION_PROPERTY,
+						new Dimension(FurtherApp.this.width, FurtherApp.this.height));
+				FurtherApp.this.width = width;
+				FurtherApp.this.height = height;
+				onResize();
+				propertyListeners.forEach(l -> l.onPropertyChanged(event));
+			}
+		});
 
 		// Make the window visible
 		glfwShowWindow(window);
 	}
 
 	private void processMouseEvent(int eventType, int button, int mods) {
+		// D&D
+		if (dragEvent != null && eventType == MouseEvent.MOUSE_DRAGGED) {
+			if (eventType == MouseEvent.MOUSE_DRAGGED) {
+				var target = getTop(mouseLocation, windows);
+				var lastDropSource = dropEvent != null ? dropEvent.getSource() : null;
+				if (dropEvent != null && target != dropEvent.getSource()) {
+					((DragInterface) dropEvent.getSource()).onDrop(
+							new DropEvent(DropEvent.CANCEL_EVENT, dropEvent.getLocation(), mods, dropEvent.getSource(),
+									dragEvent.getSource(), dragEvent.getTransferable(), dropEvent.getMode()));
+					dropEvent.getSource().repaint();
+				}
+				dropEvent = null;
+				if (target instanceof DragInterface targetDrop) {
+					DropEvent dropEvent = new DropEvent(DropEvent.TEST_EVENT,
+							new Point(mouseLocation).sub(target.getScreenLocation()), mods, target,
+							dragEvent.getSource(), dragEvent.getTransferable(), dragEvent.getMode());
+					targetDrop.onDrop(dropEvent);
+					setCursor(Cursor.getStandardCursor(
+							dropEvent.isConsumed() ? Cursor.HAND_CURSOR : Cursor.NOT_ALLOWED_CURSOR));
+					if (dropEvent.isConsumed()) {
+						this.dropEvent = dropEvent;
+						dropEvent.getSource().repaint();
+					} else if (lastDropSource == dropEvent.getSource())
+						dropEvent.getSource().repaint();
+				} else
+					setCursor(Cursor.getStandardCursor(Cursor.NOT_ALLOWED_CURSOR));
+			}
+			return;
+		}
+
 		if (eventType == MouseEvent.MOUSE_PRESSED) {
 			var pressedLocation = new Point(mouseLocation);
-			// click
 			long newTimeClick = System.currentTimeMillis();
 			if ((newTimeClick - lastTimeClick) > 300 || !pressedLocation.equals(this.pressedLocation))
 				clickCount = 0;
@@ -273,24 +364,27 @@ public class FurtherApp {
 				clickCount = 0;
 			mousePressed = false;
 		} else {
-			long newTimeClick = System.currentTimeMillis();
-			if (newTimeClick - lastTimeClick > 300)
+			if (System.currentTimeMillis() - lastTimeClick > 300)
 				clickCount = 0;
 		}
 		var windows = new ArrayList<>(this.windows);
+		boolean consumedDrag = false;
 		for (int i = 0; i < windows.size(); i++) {
 			var window = windows.get(i);
 			Point point = new Point(mouseLocation).sub(window.getLocation());
 			boolean containsPoint = window.contains(mouseLocation);
 			boolean stop = false;
-
-			if (containsPoint
+			if (containsPoint || (eventType == MouseEvent.MOUSE_RELEASED && window.hasStatus(FComponent.MOUSE_PRESSED))
+					|| (eventType == MouseEvent.MOUSE_DRAGGED && window.hasStatus(FComponent.MOUSE_PRESSED))
+					|| (eventType == MouseEvent.MOUSE_MOVED
+							&& (containsPoint || window.hasStatus(FComponent.MOUSE_ENTERED)))
 					|| (eventType == MouseEvent.MOUSE_RELEASED && window.hasStatus(FComponent.MOUSE_PRESSED))) {
 				if (stop = (containsPoint && !(window instanceof FPopupWindow) && eventType == MouseEvent.MOUSE_PRESSED)
 						|| (!containsPoint && eventType == MouseEvent.MOUSE_RELEASED
 								&& window instanceof FPopupWindow)) {
 					clearPopupWindows();
 				}
+
 				if (window instanceof FPopupWindow)
 					stop = true;
 
@@ -304,36 +398,109 @@ public class FurtherApp {
 									eventType == MouseEvent.MOUSE_MOVED ? MouseEvent.MOUSE_EXITED : eventType, button,
 									clickCount, new Point(mouseLocation).sub(window.getLocation()), mods));
 					}
-					stop = true;
 				}
 
-				window.processMouseEvent(new MouseEvent(window, eventType, button, clickCount, point, mods));
+				var event = new MouseEvent(window, eventType, button, clickCount, point, mods);
+				window.processMouseEvent(event);
+				if (!consumedDrag && eventType == MouseEvent.MOUSE_DRAGGED && event.isConsumed())
+					consumedDrag = true;
+
 				if (eventType == MouseEvent.MOUSE_RELEASED && clickCount > 0)
 					window.processMouseEvent(
 							new MouseEvent(window, MouseEvent.MOUSE_CLICKED, button, clickCount, point, mods));
 
-				if (eventType == MouseEvent.MOUSE_MOVED && containsPoint) {
+				if (eventType == MouseEvent.MOUSE_MOVED && containsPoint)
 					stop = true;
-				}
 			}
 
 			if (stop || window.isAlwaysOnTop()) {
 				break;
 			}
 		}
+
+		if (dragEvent != null && eventType == MouseEvent.MOUSE_RELEASED) {
+			if (dropEvent != null) {
+				var dragEvent = this.dragEvent;
+				var dropEvent = this.dropEvent;
+				var event1 = new DropEvent(DropEvent.ACCEPTED_EVENT, dropEvent.getLocation(), mods,
+						dropEvent.getSource(), dragEvent.getSource(), dropEvent.getTransferable(), dropEvent.getMode());
+				var dropEvent2 = new DropEvent(DropEvent.ACCEPTED_EVENT, dragEvent.getLocation(), mods,
+						dragEvent.getSource(), dropEvent.getSource(), dragEvent.getTransferable(), dropEvent.getMode());
+
+				((DragInterface) dropEvent.getSource()).onDrop(event1);
+				((DragInterface) dragEvent.getSource()).onDrag(dropEvent2);
+				dragEvent.getSource().repaint();
+
+				setCursor(Cursor.getStandardCursor(Cursor.ARROW_CURSOR));
+			}
+			clearDrag();
+			mousePressed = false;
+		}
+
+		// drag start
+		if (!consumedDrag && eventType == MouseEvent.MOUSE_DRAGGED) {
+			var components = new ArrayList<>(windows);
+			var top = getTop(mouseLocation, components);
+			if (top instanceof DragInterface dragTarget && top.getScreenVisibleRectangle().contains(pressedLocation)) {
+				dragComponent = top;
+				var dragEvent = new DropEvent(DropEvent.TEST_EVENT,
+						new Point(mouseLocation).sub(top.getScreenLocation()), mods, top, null, null,
+						DropEvent.ANY_MODE);
+				dragTarget.onDrag(dragEvent);
+				if (dragEvent.isConsumed()) {
+					this.dragEvent = new DropEvent(DropEvent.TEST_EVENT, mouseLocation, mods, top, null,
+							dragEvent.getTransferable(), dragEvent.getMode());
+					setCursor(Cursor.getStandardCursor(Cursor.HAND_CURSOR));
+				}
+			}
+		}
+
+	}
+
+	private void cancelDrag() {
+		if (dropEvent != null) {
+			((DragInterface) dropEvent.getSource()).onDrop(new DropEvent(DropEvent.CANCEL_EVENT,
+					dropEvent.getLocation(), dropEvent.getMods(), dropEvent.getSource(), dragEvent.getSource(),
+					dragEvent.getTransferable(), dropEvent.getMode()));
+			((DragInterface) dragEvent.getSource()).onDrag(new DropEvent(DropEvent.CANCEL_EVENT,
+					dragEvent.getLocation(), dragEvent.getMods(), dragEvent.getSource(), dragEvent.getSource(),
+					dragEvent.getTransferable(), dropEvent.getMode()));
+			dragEvent.getSource().repaint();
+			dropEvent.getSource().repaint();
+			setCursor(dropEvent.getSource().getCursor());
+			clearDrag();
+		} else {
+			var top = getTop(mouseLocation, windows);
+			if (top != null)
+				setCursor(top.getCursor());
+		}
+	}
+
+	private void clearDrag() {
+		dragEvent = dropEvent = null;
+	}
+
+	private FComponent getTop(Point mouseLocation, List<? extends FComponent> components) {
+		for (var component : components) {
+			if (component.isVisible() && component.contains(mouseLocation)) {
+				if (component.components != null) {
+					var ret = getTop(new Point(mouseLocation).sub(component.getLocation()), component.components);
+					if (ret != null)
+						return ret;
+				}
+				return component;
+			}
+		}
+		return null;
 	}
 
 	public void clearPopupWindows() {
 		new LinkedList<>(windows).stream().filter(FPopupWindow.class::isInstance).forEach(w -> w.setVisible(false));
 	}
 
-	private void loop() {
-
-		// Set the clear color
-
-		// Run the rendering loop until the user has attempted to close
-		// the window or has pressed the ESCAPE key.
-		glClearColor(1.15f, 0.1f, 0.45f, 0.0f);
+	private void mainLoop() {
+		mainThread = Thread.currentThread();
+		glClearColor(1, 1, 1, 0.0f);
 		glClear(GL_COLOR_BUFFER_BIT); // clear the framebuffer
 //		glfwSwapBuffers(window); // swap the color buffers
 		while (!glfwWindowShouldClose(window)) {
@@ -346,14 +513,24 @@ public class FurtherApp {
 		var list = new ArrayList<>(toInvokeList);
 		toInvokeList.clear();
 		list.forEach(c -> c.run());
-
 		// Poll for window events. The key callback above will only be
 		// invoked during this call.
 		glfwPollEvents();
 	}
 
-	public static FurtherApp getInstance() {
-		return instance;
+	public void invokeLater(Runnable runnable) {
+		toInvokeList.add(runnable);
+		var size = toInvokeList.size();
+		if (size > 2)// leave enter
+			System.out.println("to invoke size: " + size);
+		if (toInvokeList.size() > 40)
+			throw new RuntimeException();
+	}
+
+	public void blockByDialog(FDialog fDialog) {
+		clearDrag();
+		while (fDialog.isVisible())
+			internalLoop();
 	}
 
 	public void addWindow(FWindow fWindow) {
@@ -371,6 +548,8 @@ public class FurtherApp {
 
 	public void removeWindow(FWindow fWindow) {
 		windows.remove(fWindow);
+		if (focusedComponent != null && getWindowForComponent(focusedComponent) == fWindow)
+			focusedComponent = null;
 		paintScreen(fWindow.getScreenVisibleRectangle());
 	}
 
@@ -385,6 +564,17 @@ public class FurtherApp {
 	}
 
 	public void paintScreen(Rectangle rectangle) {
+		if (Thread.currentThread() == mainThread)
+			paintScreenInternal(rectangle);
+		else
+			invokeLater(() -> paintScreenInternal(rectangle));
+	}
+
+	private void paintScreenInternal(Rectangle rectangle) {
+		// paints from back to from
+		graphics.setScissor(rectangle);
+		glClear(GL_COLOR_BUFFER_BIT);
+
 		// paint from back N to front 0
 		var reversedList = new LinkedList<FComponent>();
 		windows.stream().forEach(w -> reversedList.add(0, w));
@@ -392,49 +582,23 @@ public class FurtherApp {
 	}
 
 	private void paintComponents(List<FComponent> components, Rectangle target) {
-		invokeLater(() -> {
-			var screenRectangle = new Rectangle(0, 0, getWidth(), getHeight());
-			target.clamp(screenRectangle);
-			components.forEach(c -> {
-				var componentRect = c.getScreenVisibleRectangle();
-				componentRect.clamp(target);
-				if (c.isVisible() && componentRect.width > 0 && componentRect.height > 0) {
-					graphics.setScissor(target);
-					graphics.setTranslation(c.getScreenLocation());
+		var screenRectangle = new Rectangle(0, 0, getWidth(), getHeight());
+		target.clamp(screenRectangle);
+		components.forEach(c -> {
+			var componentRect = c.getScreenVisibleRectangle();
+			componentRect.clamp(target);
+			if (c.isVisible() && componentRect.width > 0 && componentRect.height > 0) {
+				graphics.setScissor(componentRect);
+				graphics.setTranslation(c.getScreenLocation());
 //					System.out.println("paintingxd1: " + c + ": " + target);
 //					System.out.println("paintingxd2: " + c + ": " + componentRect);
-					c.paint(graphics);
-				}
-			});
+				c.paint(graphics);
+			}
+		});
 //			glfwSwapBuffers(window); // swap the color buffers
 //			glFlush();
-			glFinish(); // instead of glfwSwapBuffers(double buffer)
-		});
+		glFinish(); // instead of glfwSwapBuffers(double buffer)
 	}
-
-	public void invokeLater(Runnable runnable) {
-		toInvokeList.add(runnable);
-		var size = toInvokeList.size();
-		if (size > 2)// leave enter
-			System.out.println("to invoke size: " + size);
-		if (toInvokeList.size() == 40)
-			throw new RuntimeException();
-	}
-
-	public void blockByDialog(FDialog fDialog) {
-		while (fDialog.isVisible()) {
-			internalLoop();
-		}
-	}
-
-	public Dimension getDimension() {
-		return new Dimension(width, height);
-	}
-
-	private Cursor lastCursor = null;
-	private Map<Integer, Long> createdCursors = new HashMap<>();
-
-	private boolean runningLoop;
 
 	public void setCursor(Cursor cursor) {
 		if (lastCursor != null && lastCursor.getId() == cursor.getId())
@@ -465,17 +629,21 @@ public class FurtherApp {
 
 	public void setFocusedControl(FComponent fComponent) {
 		if (fComponent != this.focusedComponent) {
+			boolean changed = false;
+			var last = this.focusedComponent;
 			if (this.focusedComponent != null)
-				this.focusedComponent.processFocusEventInternal(new FocusEvent(this.focusedComponent, false));
+				changed = this.focusedComponent.processFocusEventInternal(new FocusEvent(this.focusedComponent, false));
+			if (fComponent != null)
+				changed = fComponent.processFocusEventInternal(new FocusEvent(fComponent, true)) || changed;
 			this.focusedComponent = fComponent;
-			if (this.focusedComponent != null)
-				this.focusedComponent.processFocusEventInternal(new FocusEvent(fComponent, true));
+			if (this.focusedComponent != last && changed)
+				focusListeners.forEach(x -> x.focusChanged(last, fComponent));
 		}
 	}
 
 	static void handleKeyStroke(FComponent fComponent, KeyEvent keyEvent, Map<KeyStroke, String> inputMap,
 			Map<String, Action> actionMap) {
-		if (inputMap != null && actionMap != null && !keyEvent.isConsumed()
+		if (!keyEvent.isConsumed()
 				&& (keyEvent.getAction() == KeyEvent.KEY_PRESSED || keyEvent.getAction() == KeyEvent.KEY_REPEATED)) {
 			var pressedKeys = FurtherApp.getPressedKeys();
 			pressedKeys.remove((Object) KeyEvent.VK_CONTROL);
@@ -485,15 +653,22 @@ public class FurtherApp {
 			for (int i = 0; i < keys.length; i++)
 				keys[i] = pressedKeys.get(i);
 			var targetKeyStroke = new KeyStroke(keyEvent.getMods(), keys);
-			var keyStroke = inputMap.keySet().stream().filter(st -> st.equals(targetKeyStroke)).findAny();
-			if (keyStroke.isPresent())
-				fireKeyStroke(fComponent, inputMap, keyStroke.get());
+
+			var keyStroke = (inputMap != null && actionMap != null)
+					? inputMap.keySet().stream().filter(st -> st.equals(targetKeyStroke)).findAny().orElse(null)
+					: null;
+
+			if (keyStroke != null)
+				fireKeyStroke(fComponent, inputMap, keyStroke);
 			else {
-				for (var map : getInputMap(getWindow(fComponent)).entrySet()) {
-					keyStroke = map.getValue().keySet().stream().filter(st -> st.equals(targetKeyStroke)).findAny();
-					if (keyStroke.isPresent()) {
-						fireKeyStroke(map.getKey(), map.getValue(), keyStroke.get());
-						break;
+				for (var map : getInputMap(getWindowForComponent(fComponent)).entrySet()) {
+					if (map.getKey().isVisible()) {
+						keyStroke = map.getValue().keySet().stream().filter(st -> st.equals(targetKeyStroke)).findAny()
+								.orElse(null);
+						if (keyStroke != null) {
+							fireKeyStroke(map.getKey(), map.getValue(), keyStroke);
+							break;
+						}
 					}
 				}
 			}
@@ -510,12 +685,23 @@ public class FurtherApp {
 			throw new RuntimeException("Action not found: " + actionName + " on object: " + fComponent);
 	}
 
-	public static FWindow getWindow(FComponent component) {
+	public static FWindow getWindowForComponent(FComponent component) {
 		FComponent f = component;
-		while (f.getParent() != null) {
+		while (f.getParent() != null)
 			f = f.getParent();
-		}
 		return f instanceof FWindow ? (FWindow) f : null;
+	}
+
+	public void addFocusListener(FocusListener focusListener) {
+		focusListeners.add(focusListener);
+	}
+
+	public Thread getThread() {
+		return mainThread;
+	}
+
+	public void addPropertyListener(PropertyListener listener) {
+		propertyListeners.add(listener);
 	}
 
 }

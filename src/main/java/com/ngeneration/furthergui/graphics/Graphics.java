@@ -1,24 +1,65 @@
 package com.ngeneration.furthergui.graphics;
 
-import lombok.Data;
-
+import static org.lwjgl.opengl.GL11.GL_BLEND;
+import static org.lwjgl.opengl.GL11.GL_FLOAT;
+import static org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA;
+import static org.lwjgl.opengl.GL11.GL_TEXTURE_2D;
+import static org.lwjgl.opengl.GL11.GL_TRIANGLES;
+import static org.lwjgl.opengl.GL11.GL_UNSIGNED_SHORT;
+import static org.lwjgl.opengl.GL11.glBindTexture;
+import static org.lwjgl.opengl.GL11.glBlendFunc;
+import static org.lwjgl.opengl.GL11.glDrawElements;
+import static org.lwjgl.opengl.GL11.glEnable;
 import static org.lwjgl.opengl.GL11.glScissor;
-import static org.lwjgl.opengl.GL42.*;
+import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
+import static org.lwjgl.opengl.GL13.glActiveTexture;
+import static org.lwjgl.opengl.GL15.GL_ARRAY_BUFFER;
+import static org.lwjgl.opengl.GL15.GL_ELEMENT_ARRAY_BUFFER;
+import static org.lwjgl.opengl.GL15.GL_STATIC_DRAW;
+import static org.lwjgl.opengl.GL15.glBindBuffer;
+import static org.lwjgl.opengl.GL15.glBufferData;
+import static org.lwjgl.opengl.GL15.glGenBuffers;
+import static org.lwjgl.opengl.GL20.GL_COMPILE_STATUS;
+import static org.lwjgl.opengl.GL20.GL_FRAGMENT_SHADER;
+import static org.lwjgl.opengl.GL20.GL_LINK_STATUS;
+import static org.lwjgl.opengl.GL20.GL_VERTEX_SHADER;
+import static org.lwjgl.opengl.GL20.glAttachShader;
+import static org.lwjgl.opengl.GL20.glCompileShader;
+import static org.lwjgl.opengl.GL20.glCreateProgram;
+import static org.lwjgl.opengl.GL20.glCreateShader;
+import static org.lwjgl.opengl.GL20.glEnableVertexAttribArray;
+import static org.lwjgl.opengl.GL20.glGetProgramInfoLog;
+import static org.lwjgl.opengl.GL20.glGetProgramiv;
+import static org.lwjgl.opengl.GL20.glGetShaderInfoLog;
+import static org.lwjgl.opengl.GL20.glGetShaderiv;
+import static org.lwjgl.opengl.GL20.glGetUniformLocation;
+import static org.lwjgl.opengl.GL20.glLinkProgram;
+import static org.lwjgl.opengl.GL20.glShaderSource;
+import static org.lwjgl.opengl.GL20.glUniform1f;
+import static org.lwjgl.opengl.GL20.glUniform1i;
+import static org.lwjgl.opengl.GL20.glUseProgram;
+import static org.lwjgl.opengl.GL20.glVertexAttribPointer;
+import static org.lwjgl.opengl.GL30.glBindVertexArray;
+import static org.lwjgl.opengl.GL30.glGenVertexArrays;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
+import org.lwjgl.opengl.GL11;
+
 import com.ngeneration.furthergui.FurtherApp;
 import com.ngeneration.furthergui.math.Point;
 import com.ngeneration.furthergui.math.Rectangle;
 
+import lombok.Data;
+
 @Data
 public class Graphics {
 
-	private static final int FLOATS_BY_TEXTURE = 4 * 2 + 4 * 2 + 4 * 1;// vertices, uv, color
+	private static final int FLOATS_BY_TEXTURE = 4 * 2 + 4 * 2 + 4 * 4;// vertices, uv, color
 
-	private Color color = Color.WHITE;
+	private Color color = new Color(255, 255, 255);
 	private Image pixel = new Image("..\\furthergui\\src\\main\\resources\\pixel.png");
 
 	private float[] vertices;
@@ -43,6 +84,10 @@ public class Graphics {
 	private Rectangle scissor;
 
 	private float penSize = 1;
+
+	public Color getColor() {
+		return new Color(color);
+	}
 
 	public void setFont(FFont font) {
 		this.font = font;
@@ -123,11 +168,11 @@ public class Graphics {
 		glBindVertexArray(VAO);
 
 		glBindBuffer(GL_ARRAY_BUFFER, VBO);
-		glVertexAttribPointer(0, 2, GL_FLOAT, false, 5 * 4, 0);
+		glVertexAttribPointer(0, 2, GL_FLOAT, false, 8 * 4, 0);
 		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 2, GL_FLOAT, false, 5 * 4, 2 * 4);
+		glVertexAttribPointer(1, 2, GL_FLOAT, false, 8 * 4, 2 * 4);
 		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(2, 1, GL_FLOAT, false, 5 * 4, 4 * 4);
+		glVertexAttribPointer(2, 4, GL_FLOAT, false, 8 * 4, 4 * 4);
 		glEnableVertexAttribArray(2);
 
 //		glBindVertexArray(VAO);
@@ -204,7 +249,7 @@ public class Graphics {
 		float b = y2 - y1;
 		float length = (float) Math.sqrt(a * a + b * b);
 		float angle = (float) (Math.atan2(b, a) * 180 / Math.PI);
-		drawTexture(pixel, x1, y1, 0, 0, 1, 1, 0, 0.5f, length, penSize, angle);
+		drawTexture(pixel, x1, y1, 0, 0, 1, 1, 0, 0, length, penSize, angle);
 	}
 
 	public void drawCircle(float x, float y, float radius, int fidelity) {
@@ -269,29 +314,118 @@ public class Graphics {
 		vertices[verticesIndex++] = y + (rt * sin + yt * cos);
 		vertices[verticesIndex++] = uvR;
 		vertices[verticesIndex++] = uvB;
-		vertices[verticesIndex++] = color.toInt();
+		vertices[verticesIndex++] = color.getRed();
+		vertices[verticesIndex++] = color.getGreen();
+		vertices[verticesIndex++] = color.getBlue();
+		vertices[verticesIndex++] = color.getAlpha();
 
 		vertices[verticesIndex++] = x + (rt * cos + rb * -sin);
 		vertices[verticesIndex++] = y + (rt * sin + rb * cos);
 		vertices[verticesIndex++] = uvR;
 		vertices[verticesIndex++] = uvT;
-		vertices[verticesIndex++] = color.toInt();
+		vertices[verticesIndex++] = color.getRed();
+		vertices[verticesIndex++] = color.getGreen();
+		vertices[verticesIndex++] = color.getBlue();
+		vertices[verticesIndex++] = color.getAlpha();
 
 		vertices[verticesIndex++] = x + (ll * cos + rb * -sin);
 		vertices[verticesIndex++] = y + (ll * sin + rb * cos);
 		vertices[verticesIndex++] = uvL;
 		vertices[verticesIndex++] = uvT;
-		vertices[verticesIndex++] = color.toInt();
+		vertices[verticesIndex++] = color.getRed();
+		vertices[verticesIndex++] = color.getGreen();
+		vertices[verticesIndex++] = color.getBlue();
+		vertices[verticesIndex++] = color.getAlpha();
 
 		vertices[verticesIndex++] = x + (ll * cos + yt * -sin);
 		vertices[verticesIndex++] = y + (ll * sin + yt * cos);
 		vertices[verticesIndex++] = uvL;
 		vertices[verticesIndex++] = uvB;
-		vertices[verticesIndex++] = color.toInt();
+		vertices[verticesIndex++] = color.getRed();
+		vertices[verticesIndex++] = color.getGreen();
+		vertices[verticesIndex++] = color.getBlue();
+		vertices[verticesIndex++] = color.getAlpha();
 
 		if (verticesIndex >= vertices.length) {
 			flush();
 		}
+	}
+
+	public void fillRect(int x1, int y1, Color color1, int x2, int y2, Color color2, int x3, int y3, Color color3,
+			int x4, int y4, Color color4) {
+		bindTexture(pixel);
+		vertices[verticesIndex++] = tx + x1;
+		vertices[verticesIndex++] = ty + y1;
+		vertices[verticesIndex++] = 0;
+		vertices[verticesIndex++] = 0;
+		vertices[verticesIndex++] = color1.getRed();
+		vertices[verticesIndex++] = color1.getGreen();
+		vertices[verticesIndex++] = color1.getBlue();
+		vertices[verticesIndex++] = color1.getAlpha();
+		vertices[verticesIndex++] = tx + x2;
+		vertices[verticesIndex++] = ty + y2;
+		vertices[verticesIndex++] = 0;
+		vertices[verticesIndex++] = 1;
+		vertices[verticesIndex++] = color2.getRed();
+		vertices[verticesIndex++] = color2.getGreen();
+		vertices[verticesIndex++] = color2.getBlue();
+		vertices[verticesIndex++] = color2.getAlpha();
+		vertices[verticesIndex++] = tx + x3;
+		vertices[verticesIndex++] = ty + y3;
+		vertices[verticesIndex++] = 1;
+		vertices[verticesIndex++] = 1;
+		vertices[verticesIndex++] = color3.getRed();
+		vertices[verticesIndex++] = color3.getGreen();
+		vertices[verticesIndex++] = color3.getBlue();
+		vertices[verticesIndex++] = color3.getAlpha();
+		vertices[verticesIndex++] = tx + x4;
+		vertices[verticesIndex++] = ty + y4;
+		vertices[verticesIndex++] = 1;
+		vertices[verticesIndex++] = 0;
+		vertices[verticesIndex++] = color4.getRed();
+		vertices[verticesIndex++] = color4.getGreen();
+		vertices[verticesIndex++] = color4.getBlue();
+		vertices[verticesIndex++] = color4.getAlpha();
+		if (verticesIndex >= vertices.length)
+			flush();
+	}
+
+	public void fillTriangle(int x1, int y1, Color color1, int x2, int y2, Color color2, int x3, int y3, Color color3) {
+		bindTexture(pixel);
+		vertices[verticesIndex++] = tx + x1;
+		vertices[verticesIndex++] = ty + y1;
+		vertices[verticesIndex++] = 0;
+		vertices[verticesIndex++] = 0;
+		vertices[verticesIndex++] = color1.getRed();
+		vertices[verticesIndex++] = color1.getGreen();
+		vertices[verticesIndex++] = color1.getBlue();
+		vertices[verticesIndex++] = color1.getAlpha();
+		vertices[verticesIndex++] = tx + x2;
+		vertices[verticesIndex++] = ty + y2;
+		vertices[verticesIndex++] = 0;
+		vertices[verticesIndex++] = 1;
+		vertices[verticesIndex++] = color2.getRed();
+		vertices[verticesIndex++] = color2.getGreen();
+		vertices[verticesIndex++] = color2.getBlue();
+		vertices[verticesIndex++] = color2.getAlpha();
+		vertices[verticesIndex++] = tx + x3;
+		vertices[verticesIndex++] = ty + y3;
+		vertices[verticesIndex++] = 1;
+		vertices[verticesIndex++] = 1;
+		vertices[verticesIndex++] = color3.getRed();
+		vertices[verticesIndex++] = color3.getGreen();
+		vertices[verticesIndex++] = color3.getBlue();
+		vertices[verticesIndex++] = color3.getAlpha();
+		vertices[verticesIndex++] = tx + x3;
+		vertices[verticesIndex++] = ty + y3;
+		vertices[verticesIndex++] = 1;
+		vertices[verticesIndex++] = 1;
+		vertices[verticesIndex++] = color3.getRed();
+		vertices[verticesIndex++] = color3.getGreen();
+		vertices[verticesIndex++] = color3.getBlue();
+		vertices[verticesIndex++] = color3.getAlpha();
+		if (verticesIndex >= vertices.length)
+			flush();
 	}
 
 	private void bindTexture(Texture texture) {
@@ -305,6 +439,9 @@ public class Graphics {
 
 		if (verticesIndex < 1)
 			return;
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL11.GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 //		
 //		floatBuffer.clear();
 ////		floatBuffer.put(vertices);
@@ -325,30 +462,36 @@ public class Graphics {
 		verticesIndex = 0;
 	}
 
-	private String vertexShaderSource = "#version 330 core\n" + "layout (location = 0) in vec2 aPos;\n"
-			+ "layout (location = 1) in vec2 aUV;\n" + "layout (location = 2) in float aColor;\n" +
+	public void begin() {
+		glUseProgram(shaderProgram);
+	}
 
-			"out vec4 finalColor;\n" + "out vec2 TexCord;\n" +
+	public void end() {
+		flush();
+		glUseProgram(0);
+	}
+
+	private String vertexShaderSource = "#version 330 core\n" + "layout (location = 0) in vec2 aPos;\n"
+			+ "layout (location = 1) in vec2 aUV;\n" + "layout (location = 2) in vec4 aColor;\n"
+
+			+ "out vec4 finalColor;\n" + "out vec2 TexCord;\n" +
 
 			"uniform float hwidth;\n" + "uniform float hheight;\n" + "void main()\n" + "{\n" + "   TexCord = aUV;"
-			+ "   int cc = int(aColor);" + "	finalColor.a = ((cc >> 24) & 255) / 255.0f;\n"
-			+ "	finalColor.r = ((cc >> 16) & 255) /255.0f;\n" + "	finalColor.g = ((cc >> 8) & 255) /255.0f;\n"
-			+ "	finalColor.b = (cc & 255) / 255.0f;\n"
+			+ "	  finalColor = aColor;\n"
 			+ "   gl_Position = vec4(-1.0f + aPos.x/hwidth, 1.0f - aPos.y/hheight, 0.0f, 1.0f);\n" + "}";
 	private String fragmentShaderSource = "#version 330 core\r\n" + "in vec4 finalColor;\r\n" + "in vec2 TexCord;\n"
-
 			+ "uniform sampler2D texture1;\r\n"
 
-			+ "out vec4 frag_colour;\r\n" + "\r\n" + "void main()\r\n" + "{\r\n "
-			+ "    frag_colour = texture(texture1, TexCord) * finalColor;\r\n" + "}";
+			+ "out vec4 frag_color;\r\n" + "void main()\r\n" + "{\r\n "
+			+ "    frag_color = texture(texture1, TexCord) * finalColor;\r\n" + "}";
 
 	private int height;
 
 	public void drawRect(int x, int y, int width, int height) {
 		drawLine(x, y, x + width, y);
-		drawLine(x, y, x, y + height);
+		drawLine(x + penSize, y, x + penSize, y + height);
 		drawLine(x + width, y, x + width, y + height);
-		drawLine(x, y + height, x + width, y + height);
+		drawLine(x, y + height - penSize, x + width, y + height - penSize);
 	}
 
 	public Point getTranslation() {

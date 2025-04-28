@@ -22,6 +22,7 @@ public class FPanel extends FComponent {
 	public FPanel(Layout layout, Padding padding) {
 		super.setLayout(layout);
 		setPadding(padding);
+		setFocusable(false);
 	}
 
 	@Override

@@ -94,7 +94,7 @@ public class FlowLayout implements Layout {
 				maxHeight += dim.height;
 			}
 			if (direction == CENTER) {
-				x = (container.getWidth() - maxWidth - (container.getComponentCount() - 1) * gap) / 2;
+				x += (container.getWidth() - padding.getHorizontal() - maxWidth - (container.getComponentCount() - 1) * gap) / 2;
 			} else
 				y = (container.getHeight() - maxHeight - (container.getComponentCount() - 1) * gap) / 2;
 		}

@@ -14,6 +14,7 @@ public class FButton extends FAbstractButton {
 
 	public FButton(String text, Icon icon) {
 		super(text, icon);
+		setAlign(CENTER_ALIGN);
 	}
 
 }

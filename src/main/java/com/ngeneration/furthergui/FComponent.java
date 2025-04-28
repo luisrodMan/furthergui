@@ -18,6 +18,8 @@ import com.ngeneration.furthergui.event.KeyStroke;
 import com.ngeneration.furthergui.event.MouseEvent;
 import com.ngeneration.furthergui.event.MouseListener;
 import com.ngeneration.furthergui.event.MouseMotionListener;
+import com.ngeneration.furthergui.event.MouseWheelEvent;
+import com.ngeneration.furthergui.event.MouseWheelListener;
 import com.ngeneration.furthergui.event.PropertyEvent;
 import com.ngeneration.furthergui.event.PropertyListener;
 import com.ngeneration.furthergui.graphics.Color;
@@ -30,10 +32,8 @@ import com.ngeneration.furthergui.math.Point;
 import com.ngeneration.furthergui.math.Rectangle;
 
 import lombok.AllArgsConstructor;
-import lombok.Getter;
 import lombok.Setter;
 
-@Getter
 @Setter
 public abstract class FComponent {
 
@@ -46,8 +46,8 @@ public abstract class FComponent {
 
 	private static int _status = 1;
 	protected static final int VISIBLE = _status;
-	protected static final int MOUSE_ENTERED = (_status *= 2);
-	protected static final int MOUSE_PRESSED = (_status *= 2);
+	public static final int MOUSE_ENTERED = (_status *= 2);
+	public static final int MOUSE_PRESSED = (_status *= 2);
 
 	private static final Color defBackground = new Color(35, 35, 35);
 	private transient Rectangle bounds = new Rectangle(10, 10);
@@ -61,22 +61,50 @@ public abstract class FComponent {
 	private Dimension prefferedSize;
 	private Layout layout;
 	private FComponent parent;
-	private List<FComponent> components;
+	List<FComponent> components;
 	private boolean visible = true;
 	private boolean enabled = true;
 	private boolean opaque = true;
-	private boolean focusable = true;
+	private boolean focusable = false;
 	private boolean hasFocus = false;
 	private boolean validated;
 	private List<Listener> listeners = new LinkedList<>();
 	private int currentStatus;
 	private String name;
-	private Map<String, Action> actionMap = new HashMap<>();
-	private Map<KeyStroke, String> inputMap;
+	Map<String, Action> actionMap = new HashMap<>();
+	Map<KeyStroke, String> inputMap;
 	private Map<KeyStroke, String> windowInputMap;
-	
+
 	private boolean validateForDown = false;
 	private FPopupMenu popupMenu;
+
+	public Color getBackground() {
+		return background;
+	}
+
+	public Color getForeground() {
+		return foreground;
+	}
+
+	public FFont getFont() {
+		return font;
+	}
+
+	public Layout getLayout() {
+		return layout;
+	}
+
+	public boolean isOpaque() {
+		return opaque;
+	}
+
+	public boolean isEnabled() {
+		return enabled;
+	}
+
+	public FComponent getParent() {
+		return parent;
+	}
 
 	public void setPadding(Padding p) {
 		padding.set(p);
@@ -87,14 +115,20 @@ public abstract class FComponent {
 	}
 
 	public void setVisible(boolean value) {
+		boolean changed = visible != value;
 		visible = value;
 //		System.out.println("xxxxhere: " + this);
-		if (isValidated() && value) {
+		if (changed && isValidated() && value) {
 //			System.out.println("here setVisible: " + this + ": " + getScreenRectangle());
-			getGraphicsApplicationManager().paint(this, getScreenRectangle());
+			repaint();
+//			getGraphicsApplicationManager().paint(this, getScreenRectangle());
 		}
 //		else if (!(this instanceof FWindow) && value)
 //			throw new RuntimeException("sduoifs");
+	}
+
+	public boolean isVisible() {
+		return visible;
 	}
 
 	public int getX() {
@@ -115,6 +149,10 @@ public abstract class FComponent {
 
 	public int getHeight() {
 		return bounds.height;
+	}
+
+	public Rectangle getBounds() {
+		return new Rectangle(bounds);
 	}
 
 	public final void setLocation(Point location) {
@@ -148,7 +186,7 @@ public abstract class FComponent {
 		if (!dimensionChanged && !locationChanged)
 			return;
 		var old = new Rectangle(bounds);
-		validated = false;
+		setValidated(false);
 		bounds.set(x, y, width, height);
 		visibleRectangle.set(0, 0, bounds.width, bounds.height);
 		if (dimensionChanged)
@@ -162,6 +200,10 @@ public abstract class FComponent {
 		return bounds.contains(x, y);
 	}
 
+	protected void setValidated(boolean value) {
+		validated = value;
+	}
+
 	/**
 	 * This method performs a repaint operation
 	 */
@@ -170,12 +212,16 @@ public abstract class FComponent {
 		validate();
 	}
 
+	public boolean isValidated() {
+		return validated;
+	}
+
 	public void invalidate() {
 		if (!isValidated())
 			return;
 		var parent = this;
 		while (parent != null) {
-			parent.validated = false;
+			parent.setValidated(false);
 			if (!parent.isInvalidable())
 				break;
 			parent = parent.getParent();
@@ -198,7 +244,7 @@ public abstract class FComponent {
 			topMostInvalidated.validateDown();
 
 			// could be dangerous xddxdx
-			var win = FurtherApp.getWindow(topMostInvalidated);
+			var win = FurtherApp.getWindowForComponent(topMostInvalidated);
 			if (win != null && win.isVisible())
 				topMostInvalidated.repaint();
 		} else {
@@ -209,8 +255,8 @@ public abstract class FComponent {
 			var loc = getScreenLocation();
 			visibleRectangle.x -= loc.getX();
 			visibleRectangle.y -= loc.getY();
-			validated = true;
 			doLayout();
+			setValidated(true);
 			if (components != null)
 				components.forEach(c -> c.validateDown());
 		}
@@ -228,8 +274,10 @@ public abstract class FComponent {
 	}
 
 	public Dimension getPrefferedSize() {
-		return prefferedSize != null ? prefferedSize
-				: (/* UI?? */ layout != null ? layout.getPrefferedDimension(this) : getDimension());
+		// this method should be overriden if prefferedSize is not set or layout
+		// available super.getPrefferedSize() if null then return custom size
+		return prefferedSize != null ? new Dimension(prefferedSize.width, prefferedSize.height)
+				: (/* UI?? */ layout != null ? layout.getPrefferedDimension(this) : null);
 	}
 
 	public void add(FComponent component) {
@@ -240,6 +288,10 @@ public abstract class FComponent {
 		add(components != null ? components.size() : 0, component, constraints);
 	}
 
+	public void add(int index, FComponent component) {
+		add(index, component, null);
+	}
+
 	public void add(int index, FComponent component, Object constraints) {
 		if (component.getParent() != null)
 			throw new RuntimeException("Component has already a parent: " + component);
@@ -248,13 +300,17 @@ public abstract class FComponent {
 			components = new LinkedList<>();
 		components.add(index, component);
 
-		var window = FurtherApp.getWindow(this);
+		var window = FurtherApp.getWindowForComponent(this);
 		if (window != null)
 			setWindow(window, component, true);
 
 		if (layout != null)
 			layout.addComponent(component, constraints);
 		invalidate();
+	}
+
+	public Map<KeyStroke, String> getWindowInputMap() {
+		return windowInputMap;
 	}
 
 	private void setWindow(FWindow window, FComponent component, boolean add) {
@@ -269,13 +325,13 @@ public abstract class FComponent {
 	}
 
 	public void remove(int index) {
-
+		remove(components.get(index));
 	}
 
 	public boolean remove(FComponent component) {
 		if (components != null && components.remove(component)) {
 			component.parent = null;
-			var window = FurtherApp.getWindow(this);
+			var window = FurtherApp.getWindowForComponent(this);
 			if (window != null)
 				setWindow(window, component, false);
 		} else
@@ -333,7 +389,7 @@ public abstract class FComponent {
 
 	public void repaint(int x, int y, int width, int height) {
 		FComponent window = null;
-		if (!isVisible() || (window = FurtherApp.getWindow(this)) == null || !window.isVisible())
+		if (!isVisible() || (window = FurtherApp.getWindowForComponent(this)) == null || !window.isVisible())
 			return;
 		var loc = getScreenLocation();
 		var screen = new Rectangle(loc.getX() + x, loc.getY() + y, width, height);
@@ -381,10 +437,13 @@ public abstract class FComponent {
 		listeners.add(new Listener(mouseMotionListener, Listener.MOUSE_MOTION_EVENT));
 	}
 
+	public Cursor getCursor() {
+		return cursor;
+	}
+
 	protected void processMouseEvent(MouseEvent event) {
 		if (event.isConsumed() || !isVisible())
 			return;
-
 		var eventType = event.getEventType();
 		if (eventType == MouseEvent.MOUSE_MOVED && !hasStatus(MOUSE_ENTERED)) {
 			processMouseEvent(fireNewEvent(MouseEvent.MOUSE_ENTERED, event));
@@ -450,6 +509,7 @@ public abstract class FComponent {
 		if (!mouseExited && !anyComponentContains && eventType != MouseEvent.MOUSE_DRAGGED) {
 			FurtherApp.getInstance().setCursor(getCursor());
 		}
+
 	}
 
 	private MouseEvent fireNewEvent(int type, MouseEvent event) {
@@ -503,6 +563,11 @@ public abstract class FComponent {
 		return visibleRectangle.contains(point);
 	}
 
+	/**
+	 * This component visible bounds in this component local coordinates.
+	 * 
+	 * @return
+	 */
 	protected Rectangle getVisibleRectangle() {
 		return new Rectangle(visibleRectangle);
 	}
@@ -515,6 +580,7 @@ public abstract class FComponent {
 		private static final int MOUSE_MOTION_EVENT = eventIdx++;
 		private static final int KEY_EVENT = eventIdx++;
 		private static final int PROPERTY_EVENT = eventIdx++;
+		private static final int MOUSE_WHEEL_EVENT = eventIdx++;
 		private Object listener;
 		private int type;
 	}
@@ -539,7 +605,7 @@ public abstract class FComponent {
 	@Override
 	public String toString() {
 		String value = super.toString();
-		return name == null ? value : value + " : " + name;
+		return name == null ? value : value + "::" + name;
 	}
 
 	public void setComponentPopupMenu(FPopupMenu popupMenu) {
@@ -558,7 +624,7 @@ public abstract class FComponent {
 		if (condition == WHEN_IN_FOCUSED_WINDOWS) {
 			if (windowInputMap == null) {
 				windowInputMap = new HashMap<>();
-				var window = FurtherApp.getWindow(this);
+				var window = FurtherApp.getWindowForComponent(this);
 				if (window != null)
 					FurtherApp.getInputMap(window).put(this, windowInputMap);
 			}
@@ -621,30 +687,34 @@ public abstract class FComponent {
 		return -1;
 	}
 
-	void processFocusEventInternal(FocusEvent focusEvent) {
+	boolean processFocusEventInternal(FocusEvent focusEvent) {
 		if ((focusEvent.isFocusGained() && !focusable) || (!focusEvent.isFocusGained() && !hasFocus))
-			return;
+			return false;
 		var comp = this;
 		while (comp != null) {
 			comp.processFocusEvent(new FocusEvent(comp, focusEvent.isFocusGained()));
 			comp = comp.getParent();
 		}
+		return true;
+	}
+
+	public void addFocusListener(FocusListener propertyListener) {
+		listeners.add(new Listener(propertyListener, Listener.FOCUS_EVENT));
+	}
+
+	public void removeFocusListener(FocusListener propertyListener) {
+		removeListener(Listener.FOCUS_EVENT, propertyListener);
 	}
 
 	protected void processFocusEvent(FocusEvent focusEvent) {
-		if (!focusEvent.isConsumed()) {
-			var event = new FocusEvent(this, focusEvent.isFocusGained());
-			listeners.stream().filter(l -> l.type == Listener.FOCUS_EVENT).map(l -> l.listener)
-					.map(FocusListener.class::cast).filter((v) -> !event.isConsumed()).peek((l) -> {
-						if (focusEvent.isFocusGained())
-							l.focusGained(event);
-						else
-							l.focusLost(event);
-					}).count();
-			if (!event.isConsumed()) {
-				hasFocus = focusEvent.isFocusGained();
-			}
-		}
+		fireEvent(Listener.FOCUS_EVENT, focusEvent, FocusListener.class, l -> {
+			if (focusEvent.isFocusGained())
+				l.focusGained(focusEvent);
+			else
+				l.focusLost(focusEvent);
+		});
+		if (!focusEvent.isConsumed())
+			hasFocus = focusEvent.isFocusGained();
 	}
 
 	protected void processKeyEvent(KeyEvent keyEvent) {
@@ -662,7 +732,6 @@ public abstract class FComponent {
 			if (keyEvent.isConsumed())
 				break;
 		}
-		FurtherApp.handleKeyStroke(this, keyEvent, inputMap, actionMap);
 	}
 
 	private void removeListener(int type, Object listener) {
@@ -677,14 +746,40 @@ public abstract class FComponent {
 		removeListener(Listener.PROPERTY_EVENT, propertyListener);
 	}
 
-	private void fireEvent(int type, Event event, Consumer<Object> listener) {
-		listeners.stream().filter(l -> l.type == type && !event.isConsumed()).peek(l -> listener.accept(l.listener))
-				.count();
+	public void addMouseWheelListener(MouseWheelListener mouseWheelListener) {
+		listeners.add(new Listener(mouseWheelListener, Listener.MOUSE_WHEEL_EVENT));
+	}
+
+	public void removeMouseWheelListener(MouseWheelListener mouseWheelListener) {
+		removeListener(Listener.MOUSE_WHEEL_EVENT, mouseWheelListener);
+	}
+
+	protected void processScrollEvent(MouseWheelEvent mouseWheelEvent) {
+		fireEvent(Listener.MOUSE_WHEEL_EVENT, mouseWheelEvent, MouseWheelListener.class,
+				l -> l.mouseWheelMoved(mouseWheelEvent));
+	}
+
+//	private void fireEvent(int type, Event event, Consumer<Object> listener) {
+//		listeners.stream().filter(l -> l.type == type && !event.isConsumed()).peek(l -> listener.accept(l.listener))
+//				.count();
+//	}
+
+	private <T extends Object> void fireEvent(int type, Event event, Class<T> c, Consumer<T> listener) {
+		listeners.stream().filter(l -> l.type == type && !event.isConsumed())
+				.peek(l -> listener.accept(c.cast(l.listener))).count();
 	}
 
 	protected void firePropertyListeners(String propertyName, Object oldValue) {
 		var event = new PropertyEvent(this, propertyName, oldValue);
-		fireEvent(Listener.PROPERTY_EVENT, event, l -> ((PropertyListener) l).onPropertyChanged(event));
+		fireEvent(Listener.PROPERTY_EVENT, event, PropertyListener.class,
+				(listener) -> listener.onPropertyChanged(event));
+	}
+
+	public void makeVisible(Rectangle localRegion) {
+		if (parent != null && parent.isValidated()) {
+			parent.makeVisible(new Rectangle(getX() + localRegion.x, getY() + localRegion.y, localRegion.width,
+					localRegion.height));
+		}
 	}
 
 }

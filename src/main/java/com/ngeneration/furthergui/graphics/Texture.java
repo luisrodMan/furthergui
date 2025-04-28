@@ -25,7 +25,10 @@ import static org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
+
+import javax.imageio.ImageIO;
 
 import org.lwjgl.stb.STBImage;
 

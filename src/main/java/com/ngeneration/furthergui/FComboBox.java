@@ -1,8 +1,11 @@
 package com.ngeneration.furthergui;
 
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 
+import com.ngeneration.furthergui.event.ActionEvent;
 import com.ngeneration.furthergui.event.ActionListener;
 import com.ngeneration.furthergui.event.MouseAdapter;
 import com.ngeneration.furthergui.event.MouseEvent;
@@ -27,6 +30,8 @@ public class FComboBox<T> extends FComponent {
 	private int mode = -1;
 	private FPopupWindow menuWindow;
 	private FList<T> list;
+
+	private Set<ActionListener> listeners = new LinkedHashSet<>();
 
 	public FComboBox() {
 		setBackground(Color.GRAY);
@@ -155,7 +160,11 @@ public class FComboBox<T> extends FComponent {
 	}
 
 	public void addItem(T item) {
-		items.add(item);
+		addItem(items.size(), item);
+	}
+
+	public void addItem(int index, T item) {
+		items.add(index, item);
 		if (selectedIndex == -1)
 			setSelectedIndex(0);
 	}
@@ -186,8 +195,11 @@ public class FComboBox<T> extends FComponent {
 		if (change) {
 			if (isEditable())
 				getEditor().setItem(getSelectedItem());
-			else
+			else {
 				revalidate();
+				var event = new ActionEvent(this);
+				listeners.forEach(l -> l.actionPerformed(event));
+			}
 		}
 	}
 
@@ -208,7 +220,11 @@ public class FComboBox<T> extends FComponent {
 	}
 
 	public void addActionListener(ActionListener object) {
+		listeners.add(object);
+	}
 
+	public void removeActionListener(ActionListener object) {
+		listeners.remove(object);
 	}
 
 	public static class ArrowIcon implements Icon {
@@ -284,6 +300,18 @@ public class FComboBox<T> extends FComponent {
 
 		}
 
+	}
+
+	public boolean containsItem(T item) {
+		return items.contains(item);
+	}
+
+	public void removeAllItems() {
+		int count = items.size();
+		items.clear();
+		if (count > 0)
+			setSelectedIndexInternal(-1);
+		revalidate();
 	}
 
 }

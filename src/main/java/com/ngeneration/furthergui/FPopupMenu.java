@@ -39,6 +39,7 @@ public class FPopupMenu extends FPopupWindow {
 	}
 
 	public void clearAll() {
+		getComponents().forEach(c -> c.removeAll());
 		removeAll();
 		lastComponent = null;
 	}
@@ -60,11 +61,21 @@ public class FPopupMenu extends FPopupWindow {
 	}
 
 	@Override
+	public void showVisible(FComponent component, int x, int y) {
+		PopupMenuEvent event = new PopupMenuEvent(this);
+		if (!isVisible())
+			listeners.forEach(e -> e.popupMenuWillBecomeVisible(event));
+		if (event.isCanceled()) {
+			listeners.forEach(e -> e.popupMenuCanceled(event));
+			return;
+		}
+		super.showVisible(component, x, y);
+	}
+
+	@Override
 	public void setVisible(boolean value) {
 		PopupMenuEvent event = new PopupMenuEvent(this);
-		if (value && !isVisible())
-			listeners.forEach(e -> e.popupMenuWillBecomeVisible(event));
-		else if (!value && isVisible())
+		if (!value && isVisible())
 			listeners.forEach(e -> e.popupMenuWillBecomeInvisible(event));
 		if (event.isCanceled()) {
 			listeners.forEach(e -> e.popupMenuCanceled(event));
@@ -78,6 +89,10 @@ public class FPopupMenu extends FPopupWindow {
 		super.paintComponent(g);
 		g.setColor(Color.GRAY);
 		g.drawRect(1, 1, getWidth() - 1, getHeight() - 1);
+	}
+
+	public int getItemCount() {
+		return getItems().size();
 	}
 
 }

@@ -1,6 +1,7 @@
 package com.ngeneration.furthergui;
 
 import com.ngeneration.furthergui.event.MouseEvent;
+import com.ngeneration.furthergui.event.MouseWheelEvent;
 import com.ngeneration.furthergui.graphics.Color;
 import com.ngeneration.furthergui.graphics.Graphics;
 import com.ngeneration.furthergui.layout.Layout;
@@ -8,6 +9,7 @@ import com.ngeneration.furthergui.math.Dimension;
 import com.ngeneration.furthergui.math.MathUtil;
 import com.ngeneration.furthergui.math.Padding;
 import com.ngeneration.furthergui.math.Point;
+import com.ngeneration.furthergui.math.Rectangle;
 
 import lombok.Data;
 
@@ -17,7 +19,7 @@ public class FScrollPane extends FPanel {
 	private FComponent northComponent;
 	private FScroll vscroll;
 	private FScroll hscroll;
-	private FComponent viewport = new FPanel((Layout)null);
+	private FComponent viewport = new Viewport();
 
 	public FScrollPane(FComponent component) {
 		viewport.setPadding(new Padding(0));
@@ -59,8 +61,8 @@ public class FScrollPane extends FPanel {
 		private static final int BAR_SIZE = 16;
 		private static final int NORMAL_KNOT_SIZE = 8;
 		private static final int EXPANDED_KNOT_SIZE = 14;
-		private int orientation = VERTICAL;
-		private Point lastLocation = null;
+		private int orientation;
+		private Point pressedLocation = null;
 		private float knotDiff = 0;
 		private Color knotColor = new Color(80, 80, 80);
 
@@ -78,14 +80,11 @@ public class FScrollPane extends FPanel {
 			super.processMouseEvent(event);
 			if (!event.isConsumed()) {
 				if (event.getEventType() == MouseEvent.MOUSE_PRESSED) {
-					lastLocation = event.getLocation();
+					pressedLocation = event.getLocation();
 					knotDiff = getKnotOffset() - (isVertical() ? event.getY() : event.getX());
-					event.consume();
 				}
-
 				if (event.getEventType() == MouseEvent.MOUSE_DRAGGED)
 					draggin = true;
-
 				if (event.getEventType() == MouseEvent.MOUSE_ENTERED) {
 					selected = true;
 					repaint();
@@ -104,10 +103,10 @@ public class FScrollPane extends FPanel {
 //					lastLocation = event.getLocation();
 //					setOffset(getOffset() + (!isVertical() ? offset.getX() : offset.getY()));
 					// by follow mouse
-					event.consume();
 					float v = (isVertical() ? event.getY() : event.getX()) + knotDiff;
 					setOffset(viewToModel(v));
 				}
+				event.consume();
 			}
 		}
 
@@ -188,6 +187,57 @@ public class FScrollPane extends FPanel {
 		return false;
 	}
 
+	@Override
+	protected void processScrollEvent(MouseWheelEvent mouseWheelEvent) {
+		super.processScrollEvent(mouseWheelEvent);
+		if (!mouseWheelEvent.isConsumed()) {
+			var speed = 30;
+			component.setLocation(component.getX(), component.getY() + mouseWheelEvent.getAmount() * speed);
+			revalidate();
+		}
+	}
+
+	public class Viewport extends FPanel {
+
+		public Viewport() {
+			super((Layout) null);
+		}
+
+		@Override
+		public void makeVisible(Rectangle localRegion) {
+			var v = component.getBounds();
+			v.setLocation(0, 0);
+			localRegion.x -= component.getX();
+			localRegion.y -= component.getY();
+			localRegion.clamp(v);
+			if (localRegion.width > 0 && localRegion.height > 0) {
+				var visible = component.getVisibleRectangle();
+				if (visible.contains(localRegion))
+					return;
+				else {
+					Point p = component.getLocation();
+					int x = p.getX();
+//					
+					if (localRegion.x < -x)
+						x = -localRegion.x;
+					else if (localRegion.x + localRegion.width > -x + getWidth())
+						x -= (localRegion.x + localRegion.width) - (-x + getWidth());
+
+					int y = p.getY();
+//					
+					if (localRegion.y < -y)
+						y = -localRegion.y;
+					else if (localRegion.y + localRegion.height > -y + getHeight())
+						y -= (localRegion.y + localRegion.height) - (-y + getHeight());
+
+					component.setLocation(x, y);
+					FScrollPane.this.revalidate();
+				}
+			}
+		}
+
+	}
+
 	public class ScrollLayout implements Layout {
 
 		@Override
@@ -207,66 +257,60 @@ public class FScrollPane extends FPanel {
 		public void layout(FComponent container) {
 			boolean isVerticalScrollActive = true;
 			boolean isHorizontalScrollActive = true;
+			int northSize = (northComponent != null ? northComponent.getPrefferedSize().height : 0);
 			var padding = container.getPadding();
 			int left = padding.left;
 			int right = container.getWidth() - padding.right;
-			int northSize = (northComponent != null ? northComponent.getPrefferedSize().height : 0);
 			int top = padding.top + northSize;
 			int bottom = container.getHeight() - padding.bottom;
-			hscroll.setVisible(false);
-			vscroll.setVisible(false);
-			boolean wasActiveH = hscroll.isVisible();
-			boolean wasActiveV = vscroll.isVisible();
+			boolean hscrollActive = vscroll != null && isHorizontalScrollActive;
+			boolean vscrollActive = hscroll != null && isVerticalScrollActive;
+
 			if (component != null) {
 				var psize = component.getPrefferedSize();
-				boolean hscrollActive = vscroll != null && isHorizontalScrollActive;
-				boolean vscrollActive = hscroll != null && isVerticalScrollActive;
-
+				if (psize == null)
+					System.out.println(component);
 				if (psize.width <= right - left)
 					hscrollActive = false;
 				if (psize.height <= bottom - top)
 					vscrollActive = false;
 				if (vscrollActive && psize.width > right - left - vscroll.getPrefferedSize().width) {
 					hscrollActive = true;
-//					right = Math.max(left, right - vscroll.getPrefferedSize().width);
 				}
 				if (hscrollActive && psize.height > bottom - top - hscroll.getPrefferedSize().height) {
 					vscrollActive = true;
-//					bottom = Math.max(top, bottom - hscroll.getPrefferedSize().height);
 				}
 
 				if (vscrollActive) {
 					var ps = vscroll.getPrefferedSize();
-					vscroll.setVisible(true);
-					int scrollHeight = bottom - top;
+					int scrollHeight = bottom - top - (hscrollActive ? hscroll.getPrefferedSize().height : 0);
 					right -= ps.width;
 					vscroll.setBounds(right, top, ps.width, scrollHeight);
-				} else
-					vscroll.setVisible(false);
+				}
 				if (hscrollActive) {
-					hscroll.setVisible(true);
 					var ps = hscroll.getPrefferedSize();
+					int scrollWidth = right - left;
 					bottom -= ps.height;
-					hscroll.setBounds(left, bottom, right - left, ps.height);
-				} else
-					hscroll.setVisible(false);
+					hscroll.setBounds(left, bottom, scrollWidth, ps.height);
+				}
 
 				int w = Math.max(psize.width, right - left);
 				int h = Math.max(psize.height, bottom - top);
 				int x = component.getX();
 				int y = component.getY();
-				if (hscrollActive) {
-					x = MathUtil.clamp(component.getX(), (right - left) - w + padding.left, 0);
-				}
-				if (vscrollActive) {
-					y = MathUtil.clamp(component.getY(), (bottom - top) - h + padding.top, 0);
-				}
+				x = MathUtil.clamp(component.getX(), right - w + padding.left, 0);
+				y = MathUtil.clamp(component.getY(), bottom - h + padding.top, 0);
 				viewport.setBounds(left, top, right - left, bottom - top);
+
 				component.setBounds(x, y, w, h);
 			}
 			if (northComponent != null) {
 				northComponent.setBounds(padding.left, padding.top, viewport.getWidth(), northSize);
 			}
+			vscroll.setValidated(false);
+			hscroll.setValidated(false);
+			vscroll.setVisible(vscrollActive);
+			hscroll.setVisible(hscrollActive);
 		}
 
 		@Override

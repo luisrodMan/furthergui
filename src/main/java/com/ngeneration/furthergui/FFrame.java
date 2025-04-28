@@ -29,7 +29,8 @@ public class FFrame extends FWindow {
 		setTitle(title);
 		super.add(container, BorderLayout.CENTER);
 		super.add(createHeader(), BorderLayout.NORTH);
-
+		setName("window");
+		container.setName("window-container ");
 	}
 
 	protected FComponent createHeader() {
@@ -61,6 +62,10 @@ public class FFrame extends FWindow {
 		setDimension(getPrefferedSize());
 	}
 
+	public String getTitle() {
+		return title;
+	}
+
 	public static class DefaultFrameHeader extends FPanel {
 
 		public static int BUTTON_MINIMIZE = 1;
@@ -78,6 +83,7 @@ public class FFrame extends FWindow {
 			super(new BorderLayout());
 			this.frame = frame;
 			setButtons(buttons);
+			setBackground(new Color(55, 65, 65));
 		}
 
 		private void setButtons(int buttons) {
@@ -95,9 +101,13 @@ public class FFrame extends FWindow {
 			if ((buttons & BUTTON_MINIMIZE) == BUTTON_MINIMIZE)
 				buttonsPanel.add(new DefaultButton(new MenimizeIcon(), BUTTON_MINIMIZE));
 
-			setPadding(new Padding(10, 1, 1, 0));
-			if (frame.getTitle() != null)
-				add(new FLabel(frame.getTitle()), BorderLayout.WEST);
+			setPadding(new Padding(15, 0, 0, 0));
+			if (frame.getTitle() != null) {
+				var label = new FLabel(frame.getTitle());
+				label.setForeground(Color.WHITE);
+				add(label, BorderLayout.WEST);
+			}
+			buttonsPanel.setBackground(Color.TRANSLUCENT);
 			add(buttonsPanel, BorderLayout.EAST);
 		}
 
@@ -106,8 +116,8 @@ public class FFrame extends FWindow {
 			public DefaultButton(Icon menimizeIcon, int type) {
 				super(menimizeIcon);
 				setPadding(new Padding(15, 4));
-				setBackground(Color.DARK_GRAY.darker().darker());
-				setHoverBackground(Color.DARK_GRAY);
+				setBackground(Color.TRANSLUCENT);
+				setHoverBackground(Color.DARK_GRAY.withAlpha(100));
 				addActionListener(e -> {
 					if (type == BUTTON_CLOSE) {
 						if (frame instanceof FDialog)
@@ -148,6 +158,7 @@ public class FFrame extends FWindow {
 				g.setPenSize(1);
 				g.drawRect(x, y, getWidth(), getHeight());
 			}
+
 		}
 
 		private class CloseIcon extends DrawableIcon {
@@ -164,10 +175,6 @@ public class FFrame extends FWindow {
 			}
 		}
 
-	}
-
-	public String getTitle() {
-		return title;
 	}
 
 }

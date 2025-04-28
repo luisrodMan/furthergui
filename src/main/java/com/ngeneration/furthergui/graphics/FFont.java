@@ -46,12 +46,15 @@ public class FFont {
 		graphics.setColor(new java.awt.Color(255, 255, 255, 0));
 		graphics.fillRect(0, 0, IMAGE_WIDTH, IMAGE_HEIGHT);
 		graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+		graphics.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION,
+				RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+		graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		graphics.setColor(java.awt.Color.WHITE);
 		var fm = graphics.getFontMetrics();
 		fontHeight = fm.getHeight();
 		int x = 0;
 		int y = fontHeight;
-		// horizontal padding 2  1-1
+		// horizontal padding 2 1-1
 		for (int i = 32; i < 256; i++) {
 			String c = "" + ((char) i);
 			var sb = fm.getStringBounds(c, graphics);
@@ -60,7 +63,7 @@ public class FFont {
 				y += fontHeight;
 			}
 			graphics.drawString(c, x + 1, y - fm.getDescent());
-			chars.put(i, new CharDef(i, x + 1, y - fontHeight, (int) sb.getWidth()));
+			chars.put(i, new CharDef(i, x + 1, y - fontHeight, (int) sb.getWidth(), (int) sb.getHeight()));
 			x += sb.getWidth() + 2;
 		}
 
@@ -86,6 +89,7 @@ public class FFont {
 		private int x;
 		private int y;
 		private int width;
+		private int height;
 	}
 
 	public int getFontHeight() {
@@ -152,6 +156,14 @@ public class FFont {
 					charDef.getWidth(), fontHeight);
 			x += charDef.getWidth();
 		}
+	}
+
+	public int getStringHeight(String object) {
+		int max = 0;
+		for (int i = 0; i < object.length(); i++) {
+			max = Math.max(max, chars.get((int) object.charAt(i)).height);
+		}
+		return max;
 	}
 
 }

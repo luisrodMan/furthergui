@@ -3,12 +3,13 @@ package com.ngeneration.furthergui;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.ngeneration.furthergui.FRadioButton.RadioIcon;
 import com.ngeneration.furthergui.event.Action;
 import com.ngeneration.furthergui.event.ActionEvent;
 import com.ngeneration.furthergui.event.ActionListener;
+import com.ngeneration.furthergui.event.FocusEvent;
 import com.ngeneration.furthergui.event.ItemEvent;
 import com.ngeneration.furthergui.event.ItemListener;
+import com.ngeneration.furthergui.event.KeyStroke;
 import com.ngeneration.furthergui.event.MouseEvent;
 import com.ngeneration.furthergui.graphics.Color;
 import com.ngeneration.furthergui.graphics.FFont;
@@ -25,11 +26,12 @@ public class FAbstractButton extends FComponent {
 	private FFont font;
 	private String text;
 	private boolean selected;
-	private List<ActionListener> listeners = new ArrayList<>(1);
-	private List<ItemListener> itemListeners = new ArrayList<>(1);
+	private List<ActionListener> listeners = new ArrayList<>();
+	private List<ItemListener> itemListeners = new ArrayList<>();
 	private Icon icon, selectedIcon;
 	private int iconGap = 5;
-	private Color hoverColor = Color.LIGTH_GRAY.darker().darker();
+	private Color hoverColor = new Color(55, 65, 75);
+	private Color focusColor = new Color(55, 85, 240);
 	private boolean opaqueOnHover = true;
 
 	private int align = LEFT_ALIGN;
@@ -43,9 +45,15 @@ public class FAbstractButton extends FComponent {
 		setFont(FurtherApp.getInstance().getDefaultFont());
 		var padding = new Padding(5, 5);
 		setPadding(padding);
+		setFocusable(true);
 
 //		setPrefferedSize(padding.toDimension().add(w, h));
 		setBackground(Color.GRAY);
+
+		getInputMap(FComponent.WHEN_FOCUSED).put(KeyStroke.getKeyStroke("ENTER"), "fire");
+		getActionMap().put("fire", (e) -> {
+			doClick();
+		});
 	}
 
 	public void setAlign(int align) {
@@ -58,7 +66,7 @@ public class FAbstractButton extends FComponent {
 
 	@Override
 	public Dimension getPrefferedSize() {
-		int w = text == null ? 0 : getFont().getStringWidth(text, 0, text.length());
+		int w = text == null ? 0 : getFont().getStringWidth(text);
 		int h = getFont().getFontHeight();
 		if (icon != null) {
 			w += icon.getWidth() + (text != null && !text.isEmpty() ? iconGap : 0);
@@ -83,7 +91,7 @@ public class FAbstractButton extends FComponent {
 		return icon;
 	}
 
-	public void setSelectedIcon(RadioIcon radioIcon) {
+	public void setSelectedIcon(Icon radioIcon) {
 		selectedIcon = radioIcon;
 	}
 
@@ -122,8 +130,14 @@ public class FAbstractButton extends FComponent {
 		if (isEnabled() && !event.isConsumed() && event.getEventType() == MouseEvent.MOUSE_RELEASED
 				&& containsOnVisible(event.getLocation())) {
 			event.consume();
-			fireActionEvent();
+			doClick();
 		}
+	}
+
+	@Override
+	protected void processFocusEvent(FocusEvent focusEvent) {
+		super.processFocusEvent(focusEvent);
+		repaint();
 	}
 
 	protected void fireActionEvent() {
@@ -153,6 +167,7 @@ public class FAbstractButton extends FComponent {
 	}
 
 	public void doClick() {
+		setSelected(!isSelected());
 		fireActionEvent();
 	}
 
@@ -162,8 +177,9 @@ public class FAbstractButton extends FComponent {
 
 	@Override
 	protected void paintComponent(Graphics g) {
+		int borderSize = 1;
 		if (isOpaque() || isOpaqueOnHover()) {
-			g.setColor(hasStatus(MOUSE_ENTERED) ? hoverColor : getBackground());
+			g.setColor(hasStatus(MOUSE_ENTERED) && isEnabled() ? hoverColor : getBackground());
 			g.fillRect(0, 0, getWidth(), getHeight());
 		}
 
@@ -173,7 +189,7 @@ public class FAbstractButton extends FComponent {
 
 		int x = getPadding().left;
 		if (align == CENTER_ALIGN) {
-			int t = icon.getWidth();
+			int t = icon == null ? 0 : icon.getWidth();
 			if (text != null)
 				t += getFont().getStringWidth(text);
 			t += icon != null && text != null ? iconGap : 0;
@@ -192,6 +208,13 @@ public class FAbstractButton extends FComponent {
 			g.setColor(!isEnabled() ? disabledForeground : getForeground());
 			g.drawString(x, (getHeight() - font.getFontHeight()) * 0.5f, text);
 		}
+
+		if (hasFocus()) {
+			g.setPenSize(borderSize);
+			g.setColor(focusColor);
+			g.drawRect(0, 0, getWidth(), getHeight());
+		}
+
 	}
 
 	public void addItemListener(ItemListener itemListener) {

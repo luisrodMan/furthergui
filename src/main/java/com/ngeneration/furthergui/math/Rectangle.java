@@ -11,8 +11,9 @@ public class Rectangle {
 	public int height;
 
 	public Rectangle() {
-		
+
 	}
+
 	public Rectangle(int width, int height) {
 		this.width = width;
 		this.height = height;
@@ -80,6 +81,12 @@ public class Rectangle {
 
 	public Dimension getDimension() {
 		return new Dimension(width, height);
+	}
+
+	public boolean contains(Rectangle localRegion) {
+		return contains(localRegion.x, localRegion.y) && contains(localRegion.x + localRegion.width, localRegion.y)
+				&& contains(localRegion.x, localRegion.y + localRegion.height)
+				&& contains(localRegion.x + localRegion.width, localRegion.y + localRegion.height);
 	}
 
 }

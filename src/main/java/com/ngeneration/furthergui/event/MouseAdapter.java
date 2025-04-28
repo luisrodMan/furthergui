@@ -1,6 +1,6 @@
 package com.ngeneration.furthergui.event;
 
-public class MouseAdapter implements MouseListener, MouseMotionListener /* , MouseWheelListener */ {
+public class MouseAdapter implements MouseListener, MouseMotionListener, MouseWheelListener {
 
 	@Override
 	public void mouseMoved(MouseEvent event) {
@@ -28,12 +28,17 @@ public class MouseAdapter implements MouseListener, MouseMotionListener /* , Mou
 
 	@Override
 	public void mouseEntered(MouseEvent event) {
-		
+
 	}
 
 	@Override
 	public void mouseExited(MouseEvent event) {
-		
+
+	}
+
+	@Override
+	public void mouseWheelMoved(MouseWheelEvent event) {
+
 	}
 
 }

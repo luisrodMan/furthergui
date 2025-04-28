@@ -16,6 +16,7 @@ public class DefaultTreeCellRenderer extends FLabel implements TreeCellRenderer 
 
 		setFont(tree.getFont());
 		setForeground(tree.getForeground());
+		setIcon(null);
 		setText(String.valueOf(value));
 		return this;
 	}

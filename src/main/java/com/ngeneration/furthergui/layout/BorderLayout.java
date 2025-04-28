@@ -13,6 +13,16 @@ public class BorderLayout implements Layout {
 	public static final int CENTER = 5;
 
 	private FComponent east, weast, north, center, south;
+	private int hgap, vgap;
+
+	public BorderLayout() {
+		this(0, 0);
+	}
+
+	public BorderLayout(int hgap, int vgap) {
+		this.hgap = hgap;
+		this.vgap = vgap;
+	}
 
 	@Override
 	public void addComponent(FComponent component, Object constraints) {
@@ -55,28 +65,38 @@ public class BorderLayout implements Layout {
 
 		int maxHeight = 0;
 
+		int hgapCount = 0;
+		int vgapCount = 0;
 		if (weast != null) {
 			dimension.width += weastDimension.width;
 			maxHeight = Math.max(maxHeight, weastDimension.height);
+			hgapCount++;
 		}
 		if (east != null) {
 			dimension.width += eastDimension.width;
 			maxHeight = Math.max(maxHeight, eastDimension.height);
+			hgapCount++;
 		}
 		if (center != null) {
 			dimension.width += centerDimension.width;
 			maxHeight = Math.max(maxHeight, centerDimension.height);
+			hgapCount++;
+			vgapCount++;
 		}
+
 		if (north != null) {
 			maxHeight += northDimension.height;
 			dimension.width = Math.max(northDimension.width, dimension.width);
+			vgapCount++;
 		}
 		if (south != null) {
 			maxHeight += southDimension.height;
 			dimension.width = Math.max(southDimension.width, dimension.width);
+			vgapCount++;
 		}
-		dimension.width = dimension.width + padding.getHorizontal();
-		dimension.height = maxHeight + dimension.height + padding.getVertical();
+		
+		dimension.width = dimension.width + padding.getHorizontal() + ((hgapCount - 1) * hgap);
+		dimension.height = maxHeight + dimension.height + padding.getVertical() + ((vgapCount - 1) * vgap);
 		return dimension;
 	}
 
@@ -91,23 +111,23 @@ public class BorderLayout implements Layout {
 		if (north != null) {
 			int l = north.getPrefferedSize().height;
 			north.setBounds(left, top, right - left, l);
-			top += l;
+			top += l + vgap;
 		}
 		if (south != null) {
 			int h = south.getPrefferedSize().height;
 			south.setBounds(left, bottom - h, right - left, h);
-			bottom -= h;
+			bottom -= h + vgap;
 		}
 
 		if (weast != null) {
 			int l = weast.getPrefferedSize().width;
 			weast.setBounds(left, top, l, bottom - top);
-			left += l;
+			left += l + hgap;
 		}
 		if (east != null) {
 			int l = east.getPrefferedSize().width;
 			east.setBounds(right - l, top, l, bottom - top);
-			right -= l;
+			right -= l + hgap;
 		}
 		if (center != null) {
 			center.setBounds(left, top, right - left, bottom - top);

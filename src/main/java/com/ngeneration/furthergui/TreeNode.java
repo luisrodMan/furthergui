@@ -8,7 +8,7 @@ public interface TreeNode {
 		TreeNode parent = this;
 		int count = 0;
 		while (parent != null) {
-			parent = getParent();
+			parent = parent.getParent();
 			count++;
 		}
 		var path = new TreeNode[count];

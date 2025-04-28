@@ -1,6 +1,7 @@
 package com.ngeneration.furthergui;
 
 import com.ngeneration.furthergui.graphics.Color;
+import com.ngeneration.furthergui.graphics.Graphics;
 
 public class FDialog extends FFrame {
 
@@ -29,6 +30,14 @@ public class FDialog extends FFrame {
 		if (value) {
 			FurtherApp.getInstance().blockByDialog(this);
 		}
+	}
+
+	@Override
+	protected void paintComponents(Graphics g) {
+		super.paintComponents(g);
+		g.setColor(new Color(55, 65, 65));
+		g.setPenSize(1);
+		g.drawRect(0, 0, getWidth(), getHeight());
 	}
 
 }

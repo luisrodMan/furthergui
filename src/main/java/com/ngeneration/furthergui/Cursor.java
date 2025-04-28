@@ -4,7 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class Cursor {
-	
+
 	private static Map<Integer, Cursor> cursors = new HashMap<>();
 
 	/**
@@ -75,7 +75,8 @@ public class Cursor {
 	/**
 	 * The hand cursor type.
 	 */
-	public static final int HAND_CURSOR = 0x00036004;
+	public static final int HAND_CURSOR = 221188;
+	public static final int NOT_ALLOWED_CURSOR = 221194;
 
 	/**
 	 * The move cursor type.
@@ -98,7 +99,7 @@ public class Cursor {
 	public static Cursor getStandardCursor(int cursor) {
 		if (ARROW_CURSOR == cursor || CROSSHAIR_CURSOR == cursor || TEXT_CURSOR == cursor || N_RESIZE_CURSOR == cursor
 				|| S_RESIZE_CURSOR == cursor || W_RESIZE_CURSOR == cursor || E_RESIZE_CURSOR == cursor
-				|| HAND_CURSOR == cursor) {
+				|| HAND_CURSOR == cursor || cursor == NOT_ALLOWED_CURSOR) {
 			cursors.put(cursor, new Cursor(cursor));
 			return cursors.get(cursor);
 		}
